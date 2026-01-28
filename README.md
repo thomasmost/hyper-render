@@ -6,7 +6,7 @@ A Chromium-free HTML rendering engine for generating PNG and PDF outputs in pure
 
 - **No browser required** — Pure Rust implementation, no Chromium/WebKit dependency
 - **PNG output** — High-quality raster images via CPU-based rendering
-- **PDF output** — Vector PDF documents (work in progress)
+- **PDF output** — Vector PDF documents with embedded fonts
 - **Modern CSS** — Flexbox, Grid, and common CSS properties via Stylo (Firefox's CSS engine)
 - **Simple API** — Single function call to render HTML to bytes
 
@@ -88,7 +88,7 @@ let config = Config::new()
 | Format | Status | Description |
 |--------|--------|-------------|
 | `OutputFormat::Png` | ✅ Full | Raster image via Vello CPU renderer |
-| `OutputFormat::Pdf` | ⚠️ Partial | Vector PDF with backgrounds (text rendering WIP) |
+| `OutputFormat::Pdf` | ✅ Full | Vector PDF with embedded fonts and backgrounds |
 
 ## Try It Yourself
 
@@ -169,7 +169,6 @@ cargo run --example from_file -- input.html output.png 2>/dev/null
 
 ## Limitations
 
-- **PDF text rendering** — Not yet implemented; PDFs render backgrounds but text requires font embedding
 - **JavaScript** — Not supported (by design)
 - **Web fonts** — System fonts only; `@font-face` not yet supported
 - **Images** — External image loading not yet implemented

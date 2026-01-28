@@ -3,8 +3,10 @@
 //! This module converts the rendered HTML content to a PDF document.
 //! It uses the Krilla library which provides a high-level API for PDF generation.
 //!
-//! **Current Status**: Renders backgrounds and box layouts. Text rendering is
-//! work in progress (requires font embedding).
+//! Supports:
+//! - Background colors on all elements
+//! - Text rendering with font embedding
+//! - Nested layout positioning
 
 use crate::config::Config;
 use crate::error::{Error, Result};
@@ -16,7 +18,9 @@ use blitz_html::HtmlDocument;
 #[cfg(feature = "pdf")]
 use krilla::color::rgb;
 #[cfg(feature = "pdf")]
-use krilla::geom::{PathBuilder, Size, Transform};
+use krilla::geom::{PathBuilder, Point, Size, Transform};
+#[cfg(feature = "pdf")]
+use krilla::num::NormalizedF32;
 #[cfg(feature = "pdf")]
 use krilla::paint::{Fill, FillRule};
 #[cfg(feature = "pdf")]
@@ -24,17 +28,26 @@ use krilla::page::PageSettings;
 #[cfg(feature = "pdf")]
 use krilla::surface::Surface;
 #[cfg(feature = "pdf")]
+use krilla::text::{Font, GlyphId, KrillaGlyph};
+#[cfg(feature = "pdf")]
 use krilla::Document;
+#[cfg(feature = "pdf")]
+use parley::PositionedLayoutItem;
+#[cfg(feature = "pdf")]
+use std::collections::HashMap;
+
+/// Font cache to avoid re-creating fonts for the same font data.
+#[cfg(feature = "pdf")]
+type FontCache = HashMap<u64, Font>;
 
 /// Render a Blitz document to PDF bytes.
 ///
 /// This function creates a PDF document with the rendered HTML content.
-/// Currently supports:
+/// Supports:
 /// - Page dimensions from config or auto-detected from content
 /// - Background colors on all elements
+/// - Text rendering with embedded fonts
 /// - Nested layout positioning
-///
-/// **Work in Progress**: Text rendering requires font embedding.
 #[cfg(feature = "pdf")]
 pub fn render_to_pdf(document: &HtmlDocument, config: &Config) -> Result<Vec<u8>> {
     let width = config.width as f32;
@@ -65,10 +78,13 @@ pub fn render_to_pdf(document: &HtmlDocument, config: &Config) -> Result<Vec<u8>
     let [r, g, b, _a] = config.background;
     draw_rect(&mut surface, 0.0, 0.0, width, height, r, g, b);
 
-    // Render the document tree
+    // Font cache to reuse fonts across the document
+    let mut font_cache = FontCache::new();
+
+    // Render the document tree (backgrounds and text)
     let doc = document.as_ref();
     let root = doc.root_element();
-    render_node(&mut surface, doc, root, 0.0, 0.0);
+    render_node(&mut surface, doc, root, 0.0, 0.0, &mut font_cache);
 
     // Pop the transform
     surface.pop();
@@ -115,7 +131,14 @@ fn draw_rect(surface: &mut Surface, x: f32, y: f32, w: f32, h: f32, r: u8, g: u8
 
 /// Recursively render a node and its children.
 #[cfg(feature = "pdf")]
-fn render_node(surface: &mut Surface, doc: &BaseDocument, node: &Node, offset_x: f32, offset_y: f32) {
+fn render_node(
+    surface: &mut Surface,
+    doc: &BaseDocument,
+    node: &Node,
+    offset_x: f32,
+    offset_y: f32,
+    font_cache: &mut FontCache,
+) {
     // Get layout information
     let layout = &node.final_layout;
     let x = offset_x + layout.location.x;
@@ -128,7 +151,7 @@ fn render_node(surface: &mut Surface, doc: &BaseDocument, node: &Node, offset_x:
         // Still process children as they might have their own layout
         for child_id in node.children.iter() {
             if let Some(child) = doc.get_node(*child_id) {
-                render_node(surface, doc, child, x, y);
+                render_node(surface, doc, child, x, y, font_cache);
             }
         }
         return;
@@ -151,10 +174,118 @@ fn render_node(surface: &mut Surface, doc: &BaseDocument, node: &Node, offset_x:
         }
     }
 
+    // Check for inline text layout data
+    if let Some(element_data) = node.element_data() {
+        if let Some(text_layout) = &element_data.inline_layout_data {
+            render_text(surface, doc, text_layout, x, y, font_cache);
+        }
+    }
+
     // Render children
     for child_id in node.children.iter() {
         if let Some(child) = doc.get_node(*child_id) {
-            render_node(surface, doc, child, x, y);
+            render_node(surface, doc, child, x, y, font_cache);
+        }
+    }
+}
+
+/// Render text from a Parley layout to the PDF surface.
+#[cfg(feature = "pdf")]
+fn render_text(
+    surface: &mut Surface,
+    doc: &BaseDocument,
+    text_layout: &blitz_dom::node::TextLayout,
+    pos_x: f32,
+    pos_y: f32,
+    font_cache: &mut FontCache,
+) {
+    use linebender_resource_handle::FontData;
+
+    let text = &text_layout.text;
+    let layout = &text_layout.layout;
+
+    for line in layout.lines() {
+        for item in line.items() {
+            if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
+                let run = glyph_run.run();
+                let font_data: FontData = run.font().clone();
+                let font_size = run.font_size();
+                let style = glyph_run.style();
+
+                // Get or create Krilla font from the Parley font data
+                let (raw_data, font_id) = font_data.data.into_raw_parts();
+                let krilla_font = font_cache.entry(font_id).or_insert_with(|| {
+                    let data: krilla::Data = raw_data.into();
+                    Font::new(data, font_data.index).expect("Failed to load font")
+                });
+
+                // Get text color from computed styles
+                let text_color = doc
+                    .get_node(style.brush.id)
+                    .and_then(|n| n.primary_styles())
+                    .map(|styles| {
+                        let inherited = styles.get_inherited_text();
+                        // inherited.color is an AbsoluteColor, convert to sRGB
+                        let srgb = inherited.color.to_color_space(style::color::ColorSpace::Srgb);
+                        (srgb.components.0, srgb.components.1, srgb.components.2, srgb.alpha)
+                    })
+                    .unwrap_or((0.0, 0.0, 0.0, 1.0));
+
+                // Set fill color for text
+                let (r, g, b, _a) = text_color;
+                surface.set_fill(Some(Fill {
+                    paint: rgb::Color::new(
+                        (r * 255.0) as u8,
+                        (g * 255.0) as u8,
+                        (b * 255.0) as u8,
+                    )
+                    .into(),
+                    opacity: NormalizedF32::ONE,
+                    rule: FillRule::NonZero,
+                }));
+
+                // Build glyphs for this run using clusters for proper text ranges
+                let mut glyphs: Vec<KrillaGlyph> = Vec::new();
+                let baseline = glyph_run.baseline();
+
+                for cluster in run.visual_clusters() {
+                    if cluster.is_ligature_continuation() {
+                        // Ligature continuations have no glyphs of their own
+                        if let Some(glyph) = glyphs.last_mut() {
+                            glyph.text_range.end = cluster.text_range().end;
+                        }
+                        continue;
+                    }
+
+                    let text_range = cluster.text_range();
+                    for glyph in cluster.glyphs() {
+                        glyphs.push(KrillaGlyph::new(
+                            GlyphId::new(glyph.id as u32),
+                            glyph.advance / font_size,
+                            glyph.x / font_size,
+                            glyph.y / font_size,
+                            0.0,
+                            text_range.clone(),
+                            None,
+                        ));
+                    }
+                }
+
+                if !glyphs.is_empty() {
+                    // Position: add node position + glyph run offset
+                    let draw_x = pos_x + glyph_run.offset();
+                    let draw_y = pos_y + baseline;
+
+                    surface.draw_glyphs(
+                        Point::from_xy(draw_x, draw_y),
+                        &glyphs,
+                        krilla_font.clone(),
+                        text,
+                        font_size,
+                        false, // outlined
+                    );
+                }
+            }
         }
     }
 }
