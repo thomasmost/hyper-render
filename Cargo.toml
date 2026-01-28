@@ -1,0 +1,43 @@
+[package]
+name = "hyper-render"
+version = "0.1.0"
+edition = "2021"
+description = "A Chromium-free HTML rendering engine for generating PNG and PDF outputs"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/versa-protocol/hyper-render"
+keywords = ["html", "pdf", "png", "render", "headless"]
+categories = ["rendering", "graphics", "multimedia::images"]
+
+[features]
+default = ["png", "pdf"]
+png = ["dep:anyrender", "dep:anyrender_vello_cpu", "dep:png"]
+pdf = ["dep:krilla"]
+
+[dependencies]
+# Core HTML/CSS parsing and layout (always required)
+blitz-dom = "0.2"
+blitz-html = "0.2"
+blitz-traits = "0.2"
+blitz-paint = "0.2"
+
+# PNG rendering (optional, enabled by default)
+anyrender = { version = "0.6", optional = true }
+anyrender_vello_cpu = { version = "0.7", optional = true }
+png = { version = "0.17", optional = true }
+
+# PDF rendering (optional, enabled by default)
+krilla = { version = "0.6", optional = true }
+
+# Common dependencies
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+
+[[example]]
+name = "simple"
+path = "examples/simple.rs"
+
+[[example]]
+name = "from_file"
+path = "examples/from_file.rs"
