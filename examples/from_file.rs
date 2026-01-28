@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Configure rendering
     let config = Config::new()
-        .size(1200, 800)
+        .size(800, 1200)
         .scale(2.0)
         .format(format)
         .auto_height(true); // Automatically adjust height to content

@@ -11,7 +11,7 @@ categories = ["rendering", "graphics", "multimedia::images"]
 [features]
 default = ["png", "pdf"]
 png = ["dep:anyrender", "dep:anyrender_vello_cpu", "dep:png"]
-pdf = ["dep:krilla"]
+pdf = ["dep:krilla", "dep:stylo"]
 
 [dependencies]
 # Core HTML/CSS parsing and layout (always required)
@@ -27,6 +27,7 @@ png = { version = "0.17", optional = true }
 
 # PDF rendering (optional, enabled by default)
 krilla = { version = "0.6", optional = true }
+stylo = { version = "0.8", optional = true }  # For accessing computed styles in PDF rendering
 
 # Common dependencies
 thiserror = "2"

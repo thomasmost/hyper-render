@@ -88,7 +88,7 @@ let config = Config::new()
 | Format | Status | Description |
 |--------|--------|-------------|
 | `OutputFormat::Png` | ✅ Full | Raster image via Vello CPU renderer |
-| `OutputFormat::Pdf` | ⚠️ WIP | Vector PDF (dimensions only, content rendering in progress) |
+| `OutputFormat::Pdf` | ⚠️ Partial | Vector PDF with backgrounds (text rendering WIP) |
 
 ## Try It Yourself
 
@@ -156,9 +156,20 @@ Blitz (DOM + rendering coordination)
        PNG               PDF
 ```
 
+## Known Issues
+
+### HTML Parser Warnings
+
+You may see `ERROR: Unexpected token` messages when rendering HTML with non-standard CSS properties (e.g., `mso-font-alt` for Microsoft Office). These warnings come from the HTML parser and **do not affect rendering** — the output is still generated correctly.
+
+To suppress these warnings, redirect stderr:
+```bash
+cargo run --example from_file -- input.html output.png 2>/dev/null
+```
+
 ## Limitations
 
-- **PDF text rendering** — Not yet implemented; PDFs currently have correct dimensions but no content
+- **PDF text rendering** — Not yet implemented; PDFs render backgrounds but text requires font embedding
 - **JavaScript** — Not supported (by design)
 - **Web fonts** — System fonts only; `@font-face` not yet supported
 - **Images** — External image loading not yet implemented
