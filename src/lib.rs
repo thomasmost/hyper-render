@@ -223,7 +223,10 @@ mod tests {
 
     #[test]
     fn test_config_validation_valid() {
-        let config = Config::new().width(1).height(1).scale(0.1);
+        let config = Config::new()
+            .width(Config::MIN_DIMENSION)
+            .height(Config::MIN_DIMENSION)
+            .scale(0.1);
         assert!(config.validate().is_ok());
     }
 }

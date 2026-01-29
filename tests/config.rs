@@ -70,11 +70,18 @@ fn test_config_validate_valid() {
 fn test_config_validate_edge_cases() {
     // Minimum valid dimensions
     assert!(Config::new()
-        .width(1)
-        .height(1)
+        .width(Config::MIN_DIMENSION)
+        .height(Config::MIN_DIMENSION)
         .scale(0.001)
         .validate()
         .is_ok());
+
+    // Below minimum should fail
+    assert!(Config::new()
+        .width(Config::MIN_DIMENSION - 1)
+        .height(Config::MIN_DIMENSION)
+        .validate()
+        .is_err());
 
     // Large dimensions
     assert!(Config::new().width(10000).height(10000).validate().is_ok());
@@ -170,8 +177,7 @@ fn test_various_dimensions() {
     let html = "<p>Test</p>";
 
     let dimensions = [
-        (1, 1),
-        (10, 10),
+        (Config::MIN_DIMENSION, Config::MIN_DIMENSION), // Minimum
         (100, 100),
         (800, 600),
         (1920, 1080),

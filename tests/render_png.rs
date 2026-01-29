@@ -113,7 +113,10 @@ fn test_png_auto_height() {
 #[test]
 fn test_png_transparent_background() {
     let html = "<html><body></body></html>";
-    let config = Config::new().width(10).height(10).transparent();
+    let config = Config::new()
+        .width(Config::MIN_DIMENSION)
+        .height(Config::MIN_DIMENSION)
+        .transparent();
 
     let result = render(html, config);
     assert!(result.is_ok(), "transparent background should work");
@@ -129,8 +132,8 @@ fn test_png_transparent_background() {
 fn test_png_custom_background() {
     let html = "<html><body></body></html>";
     let config = Config::new()
-        .width(10)
-        .height(10)
+        .width(Config::MIN_DIMENSION)
+        .height(Config::MIN_DIMENSION)
         .background([255, 0, 0, 255]); // Red
 
     let result = render(html, config);
@@ -197,13 +200,15 @@ fn test_png_styled_content() {
 #[test]
 fn test_png_minimum_dimensions() {
     let html = "<html><body></body></html>";
-    let config = Config::new().width(1).height(1);
+    let config = Config::new()
+        .width(Config::MIN_DIMENSION)
+        .height(Config::MIN_DIMENSION);
 
     let result = render(html, config);
     assert!(result.is_ok(), "minimum dimensions should work");
 
     let bytes = result.unwrap();
     let (width, height) = parse_png_dimensions(&bytes).expect("should parse PNG dimensions");
-    assert_eq!(width, 1);
-    assert_eq!(height, 1);
+    assert_eq!(width, Config::MIN_DIMENSION);
+    assert_eq!(height, Config::MIN_DIMENSION);
 }

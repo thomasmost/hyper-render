@@ -224,7 +224,10 @@ fn test_pdf_flexbox_layout() {
 #[test]
 fn test_pdf_minimum_dimensions() {
     let html = "<html><body></body></html>";
-    let config = Config::new().width(1).height(1).format(OutputFormat::Pdf);
+    let config = Config::new()
+        .width(Config::MIN_DIMENSION)
+        .height(Config::MIN_DIMENSION)
+        .format(OutputFormat::Pdf);
 
     let result = render(html, config);
     assert!(result.is_ok(), "minimum dimensions should work");

@@ -248,11 +248,17 @@ impl Config {
         self.background([0, 0, 0, 0])
     }
 
+    /// Minimum supported width/height in pixels.
+    ///
+    /// Very small dimensions can cause overflow issues in the underlying
+    /// rendering engine.
+    pub const MIN_DIMENSION: u32 = 16;
+
     /// Validate the configuration.
     ///
     /// Returns an error if any configuration values are invalid:
-    /// - Width must be at least 1
-    /// - Height must be at least 1
+    /// - Width must be at least 16
+    /// - Height must be at least 16
     /// - Scale must be greater than 0
     ///
     /// This is called automatically by the render functions.
@@ -266,13 +272,17 @@ impl Config {
     /// assert!(config.validate().is_err());
     /// ```
     pub fn validate(&self) -> Result<()> {
-        if self.width == 0 {
-            return Err(Error::InvalidConfig("width must be at least 1".to_string()));
+        if self.width < Self::MIN_DIMENSION {
+            return Err(Error::InvalidConfig(format!(
+                "width must be at least {} pixels",
+                Self::MIN_DIMENSION
+            )));
         }
-        if self.height == 0 {
-            return Err(Error::InvalidConfig(
-                "height must be at least 1".to_string(),
-            ));
+        if self.height < Self::MIN_DIMENSION {
+            return Err(Error::InvalidConfig(format!(
+                "height must be at least {} pixels",
+                Self::MIN_DIMENSION
+            )));
         }
         if self.scale <= 0.0 {
             return Err(Error::InvalidConfig(
