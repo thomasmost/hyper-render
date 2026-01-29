@@ -81,7 +81,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Run benchmarks
-        run: cargo bench --all-features -- --noplot
+        run: cargo bench --all-features --bench render
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
         with:
@@ -90,26 +90,15 @@ jobs:
           retention-days: 30
 
   size:
-    name: Binary Size
+    name: Library Size
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install cargo-bloat
-        run: cargo install cargo-bloat --locked
-      - name: Build release
-        run: cargo build --release --all-features
-      - name: Size report
-        run: |
-          echo "## Binary Size Report" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          cargo bloat --release --all-features -n 20 >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Feature size matrix
         run: |
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Feature Size Matrix" >> $GITHUB_STEP_SUMMARY
+          echo "## Library Size Report" >> $GITHUB_STEP_SUMMARY
           echo "| Features | Size |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|------|" >> $GITHUB_STEP_SUMMARY
 

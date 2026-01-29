@@ -22,20 +22,20 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Benchmark PR branch
-        run: cargo bench --all-features -- --noplot --save-baseline pr
+        run: cargo bench --all-features --bench render -- --save-baseline pr
 
       - name: Checkout base branch
         run: git checkout ${{ github.base_ref }}
 
       - name: Benchmark base branch
-        run: cargo bench --all-features -- --noplot --save-baseline base
+        run: cargo bench --all-features --bench render -- --save-baseline base
 
       - name: Checkout PR branch for comparison
         run: git checkout ${{ github.head_ref }}
 
       - name: Compare benchmarks
         run: |
-          cargo bench --all-features -- --noplot --load-baseline pr --baseline base 2>&1 | tee comparison.txt || true
+          cargo bench --all-features --bench render -- --load-baseline pr --baseline base 2>&1 | tee comparison.txt || true
 
       - name: Post comparison comment
         uses: actions/github-script@v7
