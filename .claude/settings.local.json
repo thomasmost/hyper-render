@@ -29,7 +29,16 @@
       "Bash(for i in 1 2 3)",
       "Bash(do echo \"Run $i:\")",
       "Bash(done)",
-      "Bash(RUSTDOCFLAGS=\"-D warnings\" cargo doc:*)"
+      "Bash(RUSTDOCFLAGS=\"-D warnings\" cargo doc:*)",
+      "Bash(cargo search:*)",
+      "Bash(UPDATE_SNAPSHOTS=1 cargo test:*)",
+      "Bash(for features in \"\" \"png\" \"pdf\" \"png,pdf\")",
+      "Bash(do)",
+      "Bash(echo:*)",
+      "Bash(if [ -z \"$features\" ])",
+      "Bash(then)",
+      "Bash(else)",
+      "Bash(fi)"
     ]
   }
 }
