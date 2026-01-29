@@ -22,9 +22,9 @@ use krilla::geom::{PathBuilder, Point, Size, Transform};
 #[cfg(feature = "pdf")]
 use krilla::num::NormalizedF32;
 #[cfg(feature = "pdf")]
-use krilla::paint::{Fill, FillRule};
-#[cfg(feature = "pdf")]
 use krilla::page::PageSettings;
+#[cfg(feature = "pdf")]
+use krilla::paint::{Fill, FillRule};
 #[cfg(feature = "pdf")]
 use krilla::surface::Surface;
 #[cfg(feature = "pdf")]
@@ -35,6 +35,22 @@ use krilla::Document;
 use parley::PositionedLayoutItem;
 #[cfg(feature = "pdf")]
 use std::collections::HashMap;
+
+/// RGB color for PDF rendering.
+#[cfg(feature = "pdf")]
+#[derive(Clone, Copy)]
+struct Rgb {
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
+#[cfg(feature = "pdf")]
+impl Rgb {
+    fn new(r: u8, g: u8, b: u8) -> Self {
+        Self { r, g, b }
+    }
+}
 
 /// Font cache to avoid re-creating fonts for the same font data.
 #[cfg(feature = "pdf")]
@@ -76,7 +92,7 @@ pub fn render_to_pdf(document: &HtmlDocument, config: &Config) -> Result<Vec<u8>
 
     // Draw page background
     let [r, g, b, _a] = config.background;
-    draw_rect(&mut surface, 0.0, 0.0, width, height, r, g, b);
+    draw_rect(&mut surface, 0.0, 0.0, width, height, Rgb::new(r, g, b));
 
     // Font cache to reuse fonts across the document
     let mut font_cache = FontCache::new();
@@ -84,7 +100,7 @@ pub fn render_to_pdf(document: &HtmlDocument, config: &Config) -> Result<Vec<u8>
     // Render the document tree (backgrounds and text)
     let doc = document.as_ref();
     let root = doc.root_element();
-    render_node(&mut surface, doc, root, 0.0, 0.0, &mut font_cache);
+    render_node(&mut surface, doc, root, 0.0, 0.0, &mut font_cache)?;
 
     // Pop the transform
     surface.pop();
@@ -101,7 +117,7 @@ pub fn render_to_pdf(document: &HtmlDocument, config: &Config) -> Result<Vec<u8>
 
 /// Draw a filled rectangle at the given position with the given color.
 #[cfg(feature = "pdf")]
-fn draw_rect(surface: &mut Surface, x: f32, y: f32, w: f32, h: f32, r: u8, g: u8, b: u8) {
+fn draw_rect(surface: &mut Surface, x: f32, y: f32, w: f32, h: f32, color: Rgb) {
     if w <= 0.0 || h <= 0.0 {
         return;
     }
@@ -116,10 +132,9 @@ fn draw_rect(surface: &mut Surface, x: f32, y: f32, w: f32, h: f32, r: u8, g: u8
 
     if let Some(path) = builder.finish() {
         // Create fill with color
-        let color = rgb::Color::new(r, g, b);
         let fill = Fill {
-            paint: color.into(),
-            opacity: krilla::num::NormalizedF32::ONE,
+            paint: rgb::Color::new(color.r, color.g, color.b).into(),
+            opacity: NormalizedF32::ONE,
             rule: FillRule::NonZero,
         };
 
@@ -138,7 +153,7 @@ fn render_node(
     offset_x: f32,
     offset_y: f32,
     font_cache: &mut FontCache,
-) {
+) -> Result<()> {
     // Get layout information
     let layout = &node.final_layout;
     let x = offset_x + layout.location.x;
@@ -151,10 +166,10 @@ fn render_node(
         // Still process children as they might have their own layout
         for child_id in node.children.iter() {
             if let Some(child) = doc.get_node(*child_id) {
-                render_node(surface, doc, child, x, y, font_cache);
+                render_node(surface, doc, child, x, y, font_cache)?;
             }
         }
-        return;
+        return Ok(());
     }
 
     // Check if this node has a background color
@@ -166,10 +181,8 @@ fn render_node(
         if let Some((r, g, b, a)) = extract_color(&bg) {
             // Only draw if not fully transparent
             if a > 0.0 {
-                let r8 = (r * 255.0) as u8;
-                let g8 = (g * 255.0) as u8;
-                let b8 = (b * 255.0) as u8;
-                draw_rect(surface, x, y, width, height, r8, g8, b8);
+                let color = Rgb::new((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8);
+                draw_rect(surface, x, y, width, height, color);
             }
         }
     }
@@ -177,16 +190,18 @@ fn render_node(
     // Check for inline text layout data
     if let Some(element_data) = node.element_data() {
         if let Some(text_layout) = &element_data.inline_layout_data {
-            render_text(surface, doc, text_layout, x, y, font_cache);
+            render_text(surface, doc, text_layout, x, y, font_cache)?;
         }
     }
 
     // Render children
     for child_id in node.children.iter() {
         if let Some(child) = doc.get_node(*child_id) {
-            render_node(surface, doc, child, x, y, font_cache);
+            render_node(surface, doc, child, x, y, font_cache)?;
         }
     }
+
+    Ok(())
 }
 
 /// Render text from a Parley layout to the PDF surface.
@@ -198,7 +213,7 @@ fn render_text(
     pos_x: f32,
     pos_y: f32,
     font_cache: &mut FontCache,
-) {
+) -> Result<()> {
     use linebender_resource_handle::FontData;
 
     let text = &text_layout.text;
@@ -214,32 +229,42 @@ fn render_text(
 
                 // Get or create Krilla font from the Parley font data
                 let (raw_data, font_id) = font_data.data.into_raw_parts();
-                let krilla_font = font_cache.entry(font_id).or_insert_with(|| {
+                let krilla_font = if let Some(font) = font_cache.get(&font_id) {
+                    font.clone()
+                } else {
                     let data: krilla::Data = raw_data.into();
-                    Font::new(data, font_data.index).expect("Failed to load font")
-                });
+                    let font = Font::new(data, font_data.index)
+                        .ok_or_else(|| Error::Font("failed to load font from data".to_string()))?;
+                    font_cache.insert(font_id, font.clone());
+                    font
+                };
 
                 // Get text color from computed styles
+                // Note: Alpha is extracted but not used - PDF text opacity would require
+                // additional graphics state handling which is not yet implemented.
                 let text_color = doc
                     .get_node(style.brush.id)
                     .and_then(|n| n.primary_styles())
                     .map(|styles| {
                         let inherited = styles.get_inherited_text();
                         // inherited.color is an AbsoluteColor, convert to sRGB
-                        let srgb = inherited.color.to_color_space(style::color::ColorSpace::Srgb);
-                        (srgb.components.0, srgb.components.1, srgb.components.2, srgb.alpha)
+                        let srgb = inherited
+                            .color
+                            .to_color_space(style::color::ColorSpace::Srgb);
+                        (
+                            srgb.components.0,
+                            srgb.components.1,
+                            srgb.components.2,
+                            srgb.alpha,
+                        )
                     })
-                    .unwrap_or((0.0, 0.0, 0.0, 1.0));
+                    .unwrap_or((0.0, 0.0, 0.0, 1.0)); // Default to opaque black
 
                 // Set fill color for text
                 let (r, g, b, _a) = text_color;
                 surface.set_fill(Some(Fill {
-                    paint: rgb::Color::new(
-                        (r * 255.0) as u8,
-                        (g * 255.0) as u8,
-                        (b * 255.0) as u8,
-                    )
-                    .into(),
+                    paint: rgb::Color::new((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+                        .into(),
                     opacity: NormalizedF32::ONE,
                     rule: FillRule::NonZero,
                 }));
@@ -260,7 +285,7 @@ fn render_text(
                     let text_range = cluster.text_range();
                     for glyph in cluster.glyphs() {
                         glyphs.push(KrillaGlyph::new(
-                            GlyphId::new(glyph.id as u32),
+                            GlyphId::new(glyph.id),
                             glyph.advance / font_size,
                             glyph.x / font_size,
                             glyph.y / font_size,
@@ -279,7 +304,7 @@ fn render_text(
                     surface.draw_glyphs(
                         Point::from_xy(draw_x, draw_y),
                         &glyphs,
-                        krilla_font.clone(),
+                        krilla_font,
                         text,
                         font_size,
                         false, // outlined
@@ -288,13 +313,13 @@ fn render_text(
             }
         }
     }
+
+    Ok(())
 }
 
 /// Extract RGBA color components from a Stylo color value.
 #[cfg(feature = "pdf")]
-fn extract_color(
-    color: &style::values::computed::color::Color,
-) -> Option<(f32, f32, f32, f32)> {
+fn extract_color(color: &style::values::computed::color::Color) -> Option<(f32, f32, f32, f32)> {
     use style::values::generics::color::Color as GenericColor;
 
     match color {
@@ -325,9 +350,6 @@ fn get_content_height(document: &HtmlDocument) -> Option<f32> {
 }
 
 #[cfg(not(feature = "pdf"))]
-pub fn render_to_pdf(
-    _document: &blitz_html::HtmlDocument,
-    _config: &Config,
-) -> Result<Vec<u8>> {
+pub fn render_to_pdf(_document: &blitz_html::HtmlDocument, _config: &Config) -> Result<Vec<u8>> {
     Err(Error::FormatNotEnabled("pdf"))
 }

@@ -12,6 +12,10 @@ pub enum Error {
     #[error("output format '{0}' is not enabled; enable the '{0}' feature in Cargo.toml")]
     FormatNotEnabled(&'static str),
 
+    /// Invalid configuration values.
+    #[error("invalid configuration: {0}")]
+    InvalidConfig(String),
+
     /// Failed to render to PNG format.
     #[error("PNG rendering failed: {0}")]
     PngRender(String),

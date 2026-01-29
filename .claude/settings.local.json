@@ -12,7 +12,18 @@
       "Bash(cargo run:*)",
       "Bash(ls:*)",
       "Bash(file:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(grep:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(find:*)",
+      "Bash(tree:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo tree:*)",
+      "Bash(cargo deny check:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo outdated:*)",
+      "Bash(cargo publish:*)"
     ]
   }
 }

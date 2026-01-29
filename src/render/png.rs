@@ -74,9 +74,6 @@ fn get_content_height(document: &HtmlDocument) -> Option<u32> {
 }
 
 #[cfg(not(feature = "png"))]
-pub fn render_to_png(
-    _document: &blitz_html::HtmlDocument,
-    _config: &Config,
-) -> Result<Vec<u8>> {
+pub fn render_to_png(_document: &blitz_html::HtmlDocument, _config: &Config) -> Result<Vec<u8>> {
     Err(Error::FormatNotEnabled("png"))
 }

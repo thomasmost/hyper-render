@@ -60,9 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Render to PNG
     println!("Rendering to PNG...");
-    let png_config = Config::new()
-        .size(800, 600)
-        .scale(2.0); // 2x for retina quality
+    let png_config = Config::new().size(800, 600).scale(2.0); // 2x for retina quality
 
     let png_bytes = render(html, png_config)?;
     std::fs::write("output.png", &png_bytes)?;
@@ -70,9 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Render to PDF
     println!("Rendering to PDF...");
-    let pdf_config = Config::new()
-        .size(800, 600)
-        .format(OutputFormat::Pdf);
+    let pdf_config = Config::new().size(800, 600).format(OutputFormat::Pdf);
 
     let pdf_bytes = render(html, pdf_config)?;
     std::fs::write("output.pdf", &pdf_bytes)?;

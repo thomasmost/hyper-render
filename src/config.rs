@@ -1,5 +1,7 @@
 //! Configuration types for rendering.
 
+use crate::error::{Error, Result};
+
 /// Output format for rendered content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OutputFormat {
@@ -244,5 +246,44 @@ impl Config {
     /// Shorthand for `.background([0, 0, 0, 0])`.
     pub fn transparent(self) -> Self {
         self.background([0, 0, 0, 0])
+    }
+
+    /// Validate the configuration.
+    ///
+    /// Returns an error if any configuration values are invalid:
+    /// - Width must be at least 1
+    /// - Height must be at least 1
+    /// - Scale must be greater than 0
+    ///
+    /// This is called automatically by the render functions.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use hyper_render::Config;
+    ///
+    /// let config = Config::new().width(0);
+    /// assert!(config.validate().is_err());
+    /// ```
+    pub fn validate(&self) -> Result<()> {
+        if self.width == 0 {
+            return Err(Error::InvalidConfig("width must be at least 1".to_string()));
+        }
+        if self.height == 0 {
+            return Err(Error::InvalidConfig(
+                "height must be at least 1".to_string(),
+            ));
+        }
+        if self.scale <= 0.0 {
+            return Err(Error::InvalidConfig(
+                "scale must be greater than 0".to_string(),
+            ));
+        }
+        if !self.scale.is_finite() {
+            return Err(Error::InvalidConfig(
+                "scale must be a finite number".to_string(),
+            ));
+        }
+        Ok(())
     }
 }

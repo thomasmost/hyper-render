@@ -5,6 +5,8 @@ edition = "2021"
 description = "A Chromium-free HTML rendering engine for generating PNG and PDF outputs"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/versa-protocol/hyper-render"
+documentation = "https://docs.rs/hyper-render"
+readme = "README.md"
 keywords = ["html", "pdf", "png", "render", "headless"]
 categories = ["rendering", "graphics", "multimedia::images"]
 

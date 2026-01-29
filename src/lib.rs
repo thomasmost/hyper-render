@@ -80,6 +80,7 @@ use blitz_traits::shell::Viewport;
 /// # Errors
 ///
 /// Returns an error if:
+/// - Configuration is invalid (zero dimensions, non-positive scale)
 /// - HTML parsing fails
 /// - Layout computation fails
 /// - Rendering fails
@@ -100,6 +101,9 @@ use blitz_traits::shell::Viewport;
 /// # Ok::<(), hyper_render::Error>(())
 /// ```
 pub fn render(html: &str, config: Config) -> Result<Vec<u8>> {
+    // Validate configuration
+    config.validate()?;
+
     // Parse HTML and create document
     let mut document = create_document(html, &config)?;
 
@@ -191,5 +195,35 @@ mod tests {
         assert_eq!(config.width, 800);
         assert_eq!(config.height, 600);
         assert_eq!(config.scale, 1.0);
+    }
+
+    #[test]
+    fn test_config_validation_zero_width() {
+        let config = Config::new().width(0);
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_config_validation_zero_height() {
+        let config = Config::new().height(0);
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_config_validation_zero_scale() {
+        let config = Config::new().scale(0.0);
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_config_validation_negative_scale() {
+        let config = Config::new().scale(-1.0);
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_config_validation_valid() {
+        let config = Config::new().width(1).height(1).scale(0.1);
+        assert!(config.validate().is_ok());
     }
 }
