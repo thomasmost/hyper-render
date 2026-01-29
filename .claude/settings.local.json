@@ -23,7 +23,9 @@
       "Bash(cargo deny check:*)",
       "Bash(cargo fmt:*)",
       "Bash(cargo outdated:*)",
-      "Bash(cargo publish:*)"
+      "Bash(cargo publish:*)",
+      "Bash(cargo metadata:*)",
+      "Bash(cargo bench:*)"
     ]
   }
 }

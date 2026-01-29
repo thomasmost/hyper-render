@@ -156,6 +156,71 @@ Blitz (DOM + rendering coordination)
        PNG               PDF
 ```
 
+## Performance
+
+### Benchmarks
+
+Run benchmarks locally:
+
+```bash
+# Full benchmark suite
+cargo bench --all-features
+
+# Specific benchmark group
+cargo bench full_pipeline
+
+# Generate HTML reports
+cargo bench --all-features  # Reports saved to target/criterion/
+```
+
+#### Sample Results (M1 MacBook Pro)
+
+| Benchmark | Time |
+|-----------|------|
+| PNG render (small HTML) | ~10 ms |
+| PNG render (medium HTML) | ~13 ms |
+| PNG render (large HTML, 50 items) | ~13 ms |
+| PDF render (small HTML) | ~9 ms |
+| PDF render (medium HTML) | ~9 ms |
+| PDF render (large HTML, 50 items) | ~12 ms |
+
+**Scaling impact (800x600 base):**
+| Scale | Time | Pixels |
+|-------|------|--------|
+| 1x | ~13 ms | 480K |
+| 2x | ~21 ms | 1.9M |
+| 3x | ~32 ms | 4.3M |
+
+**Dimension impact:**
+| Size | Time | Throughput |
+|------|------|------------|
+| 400x300 | ~11 ms | 10M px/s |
+| 800x600 | ~13 ms | 35M px/s |
+| 1920x1080 | ~18 ms | 115M px/s |
+
+### Build Size
+
+| Features | Library Size |
+|----------|--------------|
+| none | 250 KB |
+| png | 544 KB |
+| pdf | 513 KB |
+| png,pdf (default) | 767 KB |
+
+Check detailed size breakdown:
+
+```bash
+cargo install cargo-bloat
+cargo bloat --release --all-features -n 20
+```
+
+### Performance Characteristics
+
+- **PNG rendering** scales with pixel count: O(width × height × scale²)
+- **PDF rendering** scales with DOM complexity: O(nodes × text_length)
+- **HTML parsing** is generally fast; layout (Stylo/Taffy) dominates small documents
+- **Font caching** in PDF reduces repeated text rendering overhead
+
 ## Known Issues
 
 ### HTML Parser Warnings

@@ -1,0 +1,97 @@
+name: Benchmark Comparison
+
+on:
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  benchmark-compare:
+    name: Compare Performance
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Benchmark PR branch
+        run: cargo bench --all-features -- --noplot --save-baseline pr
+
+      - name: Checkout base branch
+        run: git checkout ${{ github.base_ref }}
+
+      - name: Benchmark base branch
+        run: cargo bench --all-features -- --noplot --save-baseline base
+
+      - name: Checkout PR branch for comparison
+        run: git checkout ${{ github.head_ref }}
+
+      - name: Compare benchmarks
+        run: |
+          cargo bench --all-features -- --noplot --load-baseline pr --baseline base 2>&1 | tee comparison.txt || true
+
+      - name: Post comparison comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let comparison = '';
+            try {
+              comparison = fs.readFileSync('comparison.txt', 'utf8');
+            } catch (e) {
+              comparison = 'Benchmark comparison not available';
+            }
+
+            // Truncate if too long
+            if (comparison.length > 60000) {
+              comparison = comparison.substring(0, 60000) + '\n... (truncated)';
+            }
+
+            const body = `## Benchmark Comparison
+
+            <details>
+            <summary>Click to expand benchmark results</summary>
+
+            \`\`\`
+            ${comparison}
+            \`\`\`
+
+            </details>
+
+            > Benchmarks compare this PR against the base branch. Look for regressions marked with "regressed" or significant percentage changes.
+            `;
+
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('## Benchmark Comparison')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }

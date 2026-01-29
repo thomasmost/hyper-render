@@ -72,3 +72,77 @@ jobs:
       - run: cargo doc --no-deps --all-features
         env:
           RUSTDOCFLAGS: -D warnings
+
+  bench:
+    name: Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run benchmarks
+        run: cargo bench --all-features -- --noplot
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: target/criterion/
+          retention-days: 30
+
+  size:
+    name: Binary Size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-bloat
+        run: cargo install cargo-bloat --locked
+      - name: Build release
+        run: cargo build --release --all-features
+      - name: Size report
+        run: |
+          echo "## Binary Size Report" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cargo bloat --release --all-features -n 20 >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+      - name: Feature size matrix
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Feature Size Matrix" >> $GITHUB_STEP_SUMMARY
+          echo "| Features | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|------|" >> $GITHUB_STEP_SUMMARY
+
+          cargo build --release --no-default-features 2>/dev/null
+          NONE=$(ls -lh target/release/libhyper_render.rlib 2>/dev/null | awk '{print $5}' || echo "N/A")
+          echo "| none | $NONE |" >> $GITHUB_STEP_SUMMARY
+
+          cargo build --release --no-default-features --features png 2>/dev/null
+          PNG=$(ls -lh target/release/libhyper_render.rlib 2>/dev/null | awk '{print $5}' || echo "N/A")
+          echo "| png | $PNG |" >> $GITHUB_STEP_SUMMARY
+
+          cargo build --release --no-default-features --features pdf 2>/dev/null
+          PDF=$(ls -lh target/release/libhyper_render.rlib 2>/dev/null | awk '{print $5}' || echo "N/A")
+          echo "| pdf | $PDF |" >> $GITHUB_STEP_SUMMARY
+
+          cargo build --release --all-features 2>/dev/null
+          ALL=$(ls -lh target/release/libhyper_render.rlib 2>/dev/null | awk '{print $5}' || echo "N/A")
+          echo "| png,pdf | $ALL |" >> $GITHUB_STEP_SUMMARY
+
+  compile-time:
+    name: Compile Time
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Clean build with timing
+        run: |
+          cargo clean
+          cargo build --release --all-features --timings
+      - name: Upload timing report
+        uses: actions/upload-artifact@v4
+        with:
+          name: compile-timing
+          path: target/cargo-timings/
+          retention-days: 90
