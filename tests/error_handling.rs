@@ -1,5 +1,7 @@
 //! Integration tests for error handling.
 
+#![cfg(feature = "png")]
+
 use hyper_render::{render, Config, Error};
 
 #[test]

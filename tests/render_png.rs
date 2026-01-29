@@ -1,5 +1,7 @@
 //! Integration tests for PNG rendering.
 
+#![cfg(feature = "png")]
+
 use hyper_render::{render, render_to_png, Config, OutputFormat};
 
 /// PNG header magic bytes

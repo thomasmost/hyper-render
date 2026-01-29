@@ -25,7 +25,11 @@
       "Bash(cargo outdated:*)",
       "Bash(cargo publish:*)",
       "Bash(cargo metadata:*)",
-      "Bash(cargo bench:*)"
+      "Bash(cargo bench:*)",
+      "Bash(for i in 1 2 3)",
+      "Bash(do echo \"Run $i:\")",
+      "Bash(done)",
+      "Bash(RUSTDOCFLAGS=\"-D warnings\" cargo doc:*)"
     ]
   }
 }

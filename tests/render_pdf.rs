@@ -1,5 +1,7 @@
 //! Integration tests for PDF rendering.
 
+#![cfg(feature = "pdf")]
+
 use hyper_render::{render, render_to_pdf, Config, OutputFormat};
 
 /// PDF magic bytes

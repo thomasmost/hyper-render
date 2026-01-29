@@ -84,6 +84,7 @@ fn test_config_validate_edge_cases() {
 }
 
 #[test]
+#[cfg(feature = "png")]
 fn test_output_format_png_rendering() {
     let html = "<p>Test</p>";
     let config = Config::new().format(OutputFormat::Png);
@@ -93,6 +94,7 @@ fn test_output_format_png_rendering() {
 }
 
 #[test]
+#[cfg(feature = "pdf")]
 fn test_output_format_pdf_rendering() {
     let html = "<p>Test</p>";
     let config = Config::new().format(OutputFormat::Pdf);
@@ -108,6 +110,7 @@ fn test_output_format_display() {
 }
 
 #[test]
+#[cfg(feature = "png")]
 fn test_color_scheme_light() {
     let html = "<p>Test</p>";
     let config = Config::new().color_scheme(ColorScheme::Light);
@@ -117,6 +120,7 @@ fn test_color_scheme_light() {
 }
 
 #[test]
+#[cfg(feature = "png")]
 fn test_color_scheme_dark() {
     let html = "<p>Test</p>";
     let config = Config::new().color_scheme(ColorScheme::Dark);
@@ -126,6 +130,7 @@ fn test_color_scheme_dark() {
 }
 
 #[test]
+#[cfg(feature = "png")]
 fn test_scale_factors() {
     let html = "<p>Test</p>";
 
@@ -138,6 +143,7 @@ fn test_scale_factors() {
 }
 
 #[test]
+#[cfg(feature = "png")]
 fn test_background_colors() {
     let html = "<p>Test</p>";
 
@@ -159,6 +165,7 @@ fn test_background_colors() {
 }
 
 #[test]
+#[cfg(feature = "png")]
 fn test_various_dimensions() {
     let html = "<p>Test</p>";
 
