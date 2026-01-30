@@ -95,7 +95,7 @@ let config = Config::new()
 ### Clone and Build
 
 ```bash
-git clone https://github.com/versa-protocol/hyper-render
+git clone https://github.com/thomasmost/hyper-render
 cd hyper-render
 cargo build
 ```
