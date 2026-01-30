@@ -495,6 +495,300 @@ fn draw_gradient_rect(
     }
 }
 
+/// Extracted box shadow data.
+#[cfg(feature = "pdf")]
+struct BoxShadowData {
+    x_offset: f32,
+    y_offset: f32,
+    blur: f32,
+    spread: f32,
+    color: Rgb,
+    alpha: f32,
+    inset: bool,
+}
+
+/// Extract box-shadow data from Stylo computed styles.
+#[cfg(feature = "pdf")]
+fn extract_box_shadows(
+    style: &style::properties::ComputedValues,
+    current_color: &AbsoluteColor,
+) -> Vec<BoxShadowData> {
+    let effects = style.get_effects();
+    let shadows = &effects.box_shadow.0;
+
+    shadows
+        .iter()
+        .map(|shadow| {
+            let color = shadow.base.color.resolve_to_absolute(current_color);
+            let srgb = color.to_color_space(style::color::ColorSpace::Srgb);
+
+            BoxShadowData {
+                x_offset: shadow.base.horizontal.px(),
+                y_offset: shadow.base.vertical.px(),
+                blur: shadow.base.blur.px(),
+                spread: shadow.spread.px(),
+                color: Rgb::new(
+                    (srgb.components.0.clamp(0.0, 1.0) * 255.0) as u8,
+                    (srgb.components.1.clamp(0.0, 1.0) * 255.0) as u8,
+                    (srgb.components.2.clamp(0.0, 1.0) * 255.0) as u8,
+                ),
+                alpha: srgb.alpha.clamp(0.0, 1.0),
+                inset: shadow.inset,
+            }
+        })
+        .collect()
+}
+
+/// Draw an outset box shadow.
+/// Since PDF doesn't support blur natively, we approximate it with multiple
+/// semi-transparent layers that expand outward.
+#[cfg(feature = "pdf")]
+fn draw_outset_box_shadow(
+    surface: &mut Surface,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    shadow: &BoxShadowData,
+    radii: &BorderRadii,
+) {
+    if shadow.alpha <= 0.0 {
+        return;
+    }
+
+    // Shadow position with offset and spread
+    let shadow_x = x + shadow.x_offset - shadow.spread;
+    let shadow_y = y + shadow.y_offset - shadow.spread;
+    let shadow_w = width + shadow.spread * 2.0;
+    let shadow_h = height + shadow.spread * 2.0;
+
+    if shadow.blur <= 0.0 {
+        // No blur - draw a single solid shadow
+        draw_rect_with_alpha(
+            surface,
+            shadow_x,
+            shadow_y,
+            shadow_w,
+            shadow_h,
+            shadow.color,
+            shadow.alpha,
+            radii,
+            shadow.spread,
+        );
+    } else {
+        // Approximate blur with multiple layers
+        // More layers = smoother but more expensive
+        let blur_steps = (shadow.blur / 3.0).ceil().max(2.0).min(8.0) as usize;
+        let step_expand = shadow.blur * 2.5 / blur_steps as f32;
+
+        for i in 0..blur_steps {
+            let expand = i as f32 * step_expand;
+            let layer_x = shadow_x - expand / 2.0;
+            let layer_y = shadow_y - expand / 2.0;
+            let layer_w = shadow_w + expand;
+            let layer_h = shadow_h + expand;
+
+            // Opacity decreases with distance from center
+            // Use a bell curve-like falloff
+            let progress = i as f32 / blur_steps as f32;
+            let layer_alpha = shadow.alpha * (1.0 - progress * progress) / blur_steps as f32 * 2.0;
+
+            if layer_alpha > 0.001 {
+                draw_rect_with_alpha(
+                    surface,
+                    layer_x,
+                    layer_y,
+                    layer_w,
+                    layer_h,
+                    shadow.color,
+                    layer_alpha,
+                    radii,
+                    shadow.spread + expand / 2.0,
+                );
+            }
+        }
+    }
+}
+
+/// Draw an inset box shadow.
+/// Inset shadows are drawn inside the element, clipped to its bounds.
+#[cfg(feature = "pdf")]
+fn draw_inset_box_shadow(
+    surface: &mut Surface,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    shadow: &BoxShadowData,
+    radii: &BorderRadii,
+) {
+    if shadow.alpha <= 0.0 {
+        return;
+    }
+
+    // For inset shadows, we draw a frame around the inside of the element
+    // The shadow appears to come from the edges going inward
+
+    // First, clip to the element bounds
+    if let Some(clip_path) = build_rounded_rect_path(x, y, width, height, radii) {
+        surface.push_clip_path(&clip_path, &FillRule::NonZero);
+    }
+
+    let blur_steps = if shadow.blur > 0.0 {
+        (shadow.blur / 3.0).ceil().max(2.0).min(8.0) as usize
+    } else {
+        1
+    };
+
+    let spread = shadow.spread.abs();
+    let inset_depth = shadow.blur * 1.5 + spread;
+
+    for i in 0..blur_steps {
+        let progress = i as f32 / blur_steps as f32;
+        let depth = inset_depth * (1.0 - progress);
+        let layer_alpha = shadow.alpha * (1.0 - progress) / blur_steps as f32;
+
+        if layer_alpha > 0.001 && depth > 0.0 {
+            // Draw shadow on each edge based on offset direction
+            // Top edge (if y_offset > 0)
+            if shadow.y_offset > 0.0 {
+                let edge_h = depth.min(shadow.y_offset + depth);
+                draw_rect_simple(
+                    surface,
+                    x + shadow.x_offset,
+                    y + shadow.y_offset,
+                    width,
+                    edge_h,
+                    shadow.color,
+                    layer_alpha,
+                );
+            }
+            // Bottom edge (if y_offset < 0)
+            if shadow.y_offset < 0.0 {
+                let edge_h = depth.min(-shadow.y_offset + depth);
+                draw_rect_simple(
+                    surface,
+                    x + shadow.x_offset,
+                    y + height + shadow.y_offset - edge_h,
+                    width,
+                    edge_h,
+                    shadow.color,
+                    layer_alpha,
+                );
+            }
+            // Left edge (if x_offset > 0)
+            if shadow.x_offset > 0.0 {
+                let edge_w = depth.min(shadow.x_offset + depth);
+                draw_rect_simple(
+                    surface,
+                    x + shadow.x_offset,
+                    y + shadow.y_offset,
+                    edge_w,
+                    height,
+                    shadow.color,
+                    layer_alpha,
+                );
+            }
+            // Right edge (if x_offset < 0)
+            if shadow.x_offset < 0.0 {
+                let edge_w = depth.min(-shadow.x_offset + depth);
+                draw_rect_simple(
+                    surface,
+                    x + width + shadow.x_offset - edge_w,
+                    y + shadow.y_offset,
+                    edge_w,
+                    height,
+                    shadow.color,
+                    layer_alpha,
+                );
+            }
+        }
+    }
+
+    // Pop the clip
+    surface.pop();
+}
+
+/// Draw a rectangle with specified alpha (for shadows).
+#[cfg(feature = "pdf")]
+fn draw_rect_with_alpha(
+    surface: &mut Surface,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    color: Rgb,
+    alpha: f32,
+    radii: &BorderRadii,
+    spread: f32,
+) {
+    if w <= 0.0 || h <= 0.0 || alpha <= 0.0 {
+        return;
+    }
+
+    // Scale radii based on spread (shadow radii grow with spread)
+    let scaled_radii = if radii.has_any_radius() && spread != 0.0 {
+        let scale = |r: f32| (r + spread).max(0.0);
+        BorderRadii {
+            top_left: (scale(radii.top_left.0), scale(radii.top_left.1)),
+            top_right: (scale(radii.top_right.0), scale(radii.top_right.1)),
+            bottom_right: (scale(radii.bottom_right.0), scale(radii.bottom_right.1)),
+            bottom_left: (scale(radii.bottom_left.0), scale(radii.bottom_left.1)),
+        }
+    } else {
+        *radii
+    };
+
+    let path = if scaled_radii.has_any_radius() {
+        build_rounded_rect_path(x, y, w, h, &scaled_radii)
+    } else {
+        let mut builder = PathBuilder::new();
+        builder.move_to(x, y);
+        builder.line_to(x + w, y);
+        builder.line_to(x + w, y + h);
+        builder.line_to(x, y + h);
+        builder.close();
+        builder.finish()
+    };
+
+    if let Some(path) = path {
+        let fill = Fill {
+            paint: rgb::Color::new(color.r, color.g, color.b).into(),
+            opacity: NormalizedF32::new(alpha).unwrap_or(NormalizedF32::ZERO),
+            rule: FillRule::NonZero,
+        };
+
+        surface.set_fill(Some(fill));
+        surface.draw_path(&path);
+    }
+}
+
+/// Draw a simple rectangle with alpha (no radii).
+#[cfg(feature = "pdf")]
+fn draw_rect_simple(surface: &mut Surface, x: f32, y: f32, w: f32, h: f32, color: Rgb, alpha: f32) {
+    if w <= 0.0 || h <= 0.0 || alpha <= 0.0 {
+        return;
+    }
+
+    let mut builder = PathBuilder::new();
+    builder.move_to(x, y);
+    builder.line_to(x + w, y);
+    builder.line_to(x + w, y + h);
+    builder.line_to(x, y + h);
+    builder.close();
+
+    if let Some(path) = builder.finish() {
+        let fill = Fill {
+            paint: rgb::Color::new(color.r, color.g, color.b).into(),
+            opacity: NormalizedF32::new(alpha).unwrap_or(NormalizedF32::ZERO),
+            rule: FillRule::NonZero,
+        };
+
+        surface.set_fill(Some(fill));
+        surface.draw_path(&path);
+    }
+}
+
 /// Recursively render a node and its children.
 #[cfg(feature = "pdf")]
 fn render_node(
@@ -523,29 +817,39 @@ fn render_node(
         return Ok(());
     }
 
-    // Extract border radii and check if we need clipping
-    let radii = node
-        .primary_styles()
-        .map(|style| extract_border_radii(&*style, width, height))
-        .unwrap_or_default();
+    // Extract style data needed for rendering
+    let (radii, current_color, shadows) = if let Some(style) = node.primary_styles() {
+        let radii = extract_border_radii(&*style, width, height);
+        let current_color = style
+            .get_inherited_text()
+            .color
+            .to_color_space(style::color::ColorSpace::Srgb);
+        let shadows = extract_box_shadows(&*style, &current_color);
+        (radii, current_color, shadows)
+    } else {
+        (
+            BorderRadii::default(),
+            AbsoluteColor::BLACK,
+            Vec::new(),
+        )
+    };
     let has_radius = radii.has_any_radius();
 
-    // Apply clip path for rounded corners
+    // 1. Draw OUTSET box shadows (before clipping, behind everything)
+    for shadow in shadows.iter().filter(|s| !s.inset) {
+        draw_outset_box_shadow(surface, x, y, width, height, shadow, &radii);
+    }
+
+    // 2. Apply clip path for rounded corners
     if has_radius {
         if let Some(clip_path) = build_rounded_rect_path(x, y, width, height, &radii) {
             surface.push_clip_path(&clip_path, &FillRule::NonZero);
         }
     }
 
-    // Draw backgrounds (color first, then gradients on top)
+    // 3. Draw backgrounds (color first, then gradients on top)
     if let Some(style) = node.primary_styles() {
-        // Get current color for resolving `currentColor` in gradients
-        let current_color = style
-            .get_inherited_text()
-            .color
-            .to_color_space(style::color::ColorSpace::Srgb);
-
-        // 1. Draw background color
+        // Draw background color
         let bg_color = style.clone_background_color();
         if let Some((r, g, b, a)) = extract_color(&bg_color) {
             if a > 0.0 {
@@ -554,7 +858,7 @@ fn render_node(
             }
         }
 
-        // 2. Draw background gradients (on top of color)
+        // Draw background gradients (on top of color)
         let bg = style.get_background();
         for bg_image in bg.background_image.0.iter() {
             if let style::values::generics::image::GenericImage::Gradient(gradient) = bg_image {
@@ -581,6 +885,11 @@ fn render_node(
                 }
             }
         }
+    }
+
+    // 4. Draw INSET box shadows (after background, inside element)
+    for shadow in shadows.iter().filter(|s| s.inset) {
+        draw_inset_box_shadow(surface, x, y, width, height, shadow, &radii);
     }
 
     // Check for inline text layout data

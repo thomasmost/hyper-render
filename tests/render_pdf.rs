@@ -403,3 +403,90 @@ fn test_pdf_gradient_with_border_radius() {
     assert!(result.is_ok(), "gradient with border-radius should render");
     assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
 }
+
+#[test]
+fn test_pdf_box_shadow_basic() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 100px; height: 100px; background: white;
+                        box-shadow: 5px 5px 10px rgba(0,0,0,0.5);"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "basic box-shadow should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_box_shadow_with_spread() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 100px; height: 100px; background: white;
+                        box-shadow: 0 0 10px 5px rgba(0,0,255,0.3);"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "box-shadow with spread should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_box_shadow_inset() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 100px; height: 100px; background: white;
+                        box-shadow: inset 0 0 20px rgba(0,0,0,0.3);"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "inset box-shadow should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_box_shadow_multiple() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 100px; height: 100px; background: white;
+                        box-shadow: 5px 5px 10px rgba(0,0,0,0.3),
+                                    -5px -5px 10px rgba(255,255,255,0.5);"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "multiple box-shadows should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_box_shadow_with_border_radius() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 100px; height: 100px; background: white;
+                        border-radius: 16px;
+                        box-shadow: 0 10px 40px rgba(0,0,0,0.2);"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "box-shadow with border-radius should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
