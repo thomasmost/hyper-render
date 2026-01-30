@@ -1008,10 +1008,12 @@ fn render_node(
 
     // Skip nodes with no size
     if width <= 0.0 || height <= 0.0 {
-        // Still process children as they might have their own layout
-        for child_id in node.children.iter() {
-            if let Some(child) = doc.get_node(*child_id) {
-                render_node(surface, doc, child, x, y, font_cache)?;
+        // Still process paint children as they might have their own layout
+        if let Some(paint_children) = &*node.paint_children.borrow() {
+            for child_id in paint_children.iter() {
+                if let Some(child) = doc.get_node(*child_id) {
+                    render_node(surface, doc, child, x, y, font_cache)?;
+                }
             }
         }
         return Ok(());
@@ -1111,10 +1113,14 @@ fn render_node(
         }
     }
 
-    // Render children
-    for child_id in node.children.iter() {
-        if let Some(child) = doc.get_node(*child_id) {
-            render_node(surface, doc, child, x, y, font_cache)?;
+    // Render children using paint_children (computed layout order, handles anonymous blocks)
+    // This is important because inline content (like inline-block elements) gets wrapped
+    // in anonymous blocks which are part of paint_children but not regular children.
+    if let Some(paint_children) = &*node.paint_children.borrow() {
+        for child_id in paint_children.iter() {
+            if let Some(child) = doc.get_node(*child_id) {
+                render_node(surface, doc, child, x, y, font_cache)?;
+            }
         }
     }
 
@@ -1143,6 +1149,10 @@ fn render_text(
 
     for line in layout.lines() {
         for item in line.items() {
+            // Only handle GlyphRun items for text rendering.
+            // InlineBox items (inline-block elements) are rendered through paint_children,
+            // not through the inline layout system. The inline box in Parley just reserves
+            // space in the text flow.
             if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
                 let run = glyph_run.run();
                 let font_data: FontData = run.font().clone();
