@@ -1,1 +1,6 @@
-Document TitleIntroduction paragraph with some text.Section OnePoint APoint BSection TwoConclusion paragraph.
+Document Title
+Introduction paragraph with some text.
+Section One
+Point A Point B
+Section Two
+Conclusion paragraph.

@@ -1,1 +1,2 @@
-Before empty.After empty.
+Before empty.
+After empty.

@@ -1,1 +1,3 @@
-Special: & < > "Unicode: HelloSymbols: $100 + 50% = profit
+Special: & < > "
+Unicode: Hello
+Symbols: $100 + 50% = profit

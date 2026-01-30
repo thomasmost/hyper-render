@@ -38,7 +38,8 @@
       "Bash(if [ -z \"$features\" ])",
       "Bash(then)",
       "Bash(else)",
-      "Bash(fi)"
+      "Bash(fi)",
+      "Bash(cargo expand:*)"
     ]
   }
 }

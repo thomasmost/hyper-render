@@ -1,1 +1,3 @@
-NameValueItem A100Item B200
+Name Value
+Item A 100
+Item B 200

@@ -1,1 +1,2 @@
-Bold text and italic text.Normal text with colored word.Normal text with colored word.Normal text with colored word.
+Bold text  and  italic text .
+Normal text with colored word. Normal text with colored word. Normal text with colored word.

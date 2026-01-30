@@ -1,1 +1,8 @@
-RECEIPTOrder #12345Date: 2024-01-15Widget$10.00Gadget$25.00Service Fee$5.00Total: $40.00Thank you for your purchase!
+RECEIPT
+Order #12345
+Date: 2024-01-15
+Widget $10.00
+Gadget $25.00
+Service Fee $5.00
+Total: $40.00
+Thank you for your purchase!
