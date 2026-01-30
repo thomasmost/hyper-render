@@ -1107,9 +1107,12 @@ fn render_node(
     draw_borders(surface, x, y, width, height, &borders);
 
     // Check for inline text layout data
+    // Text is rendered at the content box position (inside padding and border)
     if let Some(element_data) = node.element_data() {
         if let Some(text_layout) = &element_data.inline_layout_data {
-            render_text(surface, doc, text_layout, x, y, font_cache)?;
+            let content_x = x + layout.padding.left + layout.border.left;
+            let content_y = y + layout.padding.top + layout.border.top;
+            render_text(surface, doc, text_layout, content_x, content_y, font_cache)?;
         }
     }
 
