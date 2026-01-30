@@ -1,6 +1,6 @@
 [package]
 name = "hyper-render"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "A Chromium-free HTML rendering engine for generating PNG and PDF outputs"
 license = "MIT OR Apache-2.0"
