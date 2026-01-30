@@ -5,7 +5,10 @@
 //!
 //! Supports:
 //! - Background colors on all elements
+//! - Linear gradient backgrounds
 //! - Border-radius (rounded corners via clip paths)
+//! - Box shadows (outset and inset with blur approximation)
+//! - Borders (solid style with per-edge colors)
 //! - Text rendering with font embedding
 //! - Nested layout positioning
 
@@ -507,6 +510,203 @@ struct BoxShadowData {
     inset: bool,
 }
 
+/// Border data for one edge.
+#[cfg(feature = "pdf")]
+#[derive(Clone, Copy)]
+struct EdgeBorder {
+    color: Rgb,
+    alpha: f32,
+    width: f32,
+    visible: bool,
+}
+
+impl Default for EdgeBorder {
+    fn default() -> Self {
+        Self {
+            color: Rgb::new(0, 0, 0),
+            alpha: 0.0,
+            width: 0.0,
+            visible: false,
+        }
+    }
+}
+
+/// Border widths for all four edges.
+#[cfg(feature = "pdf")]
+#[derive(Clone, Copy, Default)]
+struct BorderWidths {
+    top: f32,
+    right: f32,
+    bottom: f32,
+    left: f32,
+}
+
+/// Extract border data from Stylo computed styles and border widths from layout.
+#[cfg(feature = "pdf")]
+fn extract_borders(
+    style: &style::properties::ComputedValues,
+    border_widths: BorderWidths,
+    current_color: &AbsoluteColor,
+) -> [EdgeBorder; 4] {
+    use style::values::specified::BorderStyle;
+
+    let border = style.get_border();
+
+    // Get border widths from taffy layout (in pixels)
+    let top_width = border_widths.top;
+    let right_width = border_widths.right;
+    let bottom_width = border_widths.bottom;
+    let left_width = border_widths.left;
+
+    let convert_style = |s: BorderStyle| -> bool {
+        !matches!(s, BorderStyle::None | BorderStyle::Hidden)
+    };
+
+    let extract_edge =
+        |color: &style::values::computed::Color, width: f32, style: BorderStyle| -> EdgeBorder {
+            if width <= 0.0 || !convert_style(style) {
+                return EdgeBorder::default();
+            }
+
+            let abs_color = color.resolve_to_absolute(current_color);
+            let srgb = abs_color.to_color_space(style::color::ColorSpace::Srgb);
+
+            EdgeBorder {
+                color: Rgb::new(
+                    (srgb.components.0.clamp(0.0, 1.0) * 255.0) as u8,
+                    (srgb.components.1.clamp(0.0, 1.0) * 255.0) as u8,
+                    (srgb.components.2.clamp(0.0, 1.0) * 255.0) as u8,
+                ),
+                alpha: srgb.alpha.clamp(0.0, 1.0),
+                width,
+                visible: true,
+            }
+        };
+
+    [
+        extract_edge(
+            &border.border_top_color,
+            top_width,
+            border.border_top_style,
+        ),
+        extract_edge(
+            &border.border_right_color,
+            right_width,
+            border.border_right_style,
+        ),
+        extract_edge(
+            &border.border_bottom_color,
+            bottom_width,
+            border.border_bottom_style,
+        ),
+        extract_edge(
+            &border.border_left_color,
+            left_width,
+            border.border_left_style,
+        ),
+    ]
+}
+
+/// Draw borders as filled trapezoid shapes.
+#[cfg(feature = "pdf")]
+fn draw_borders(
+    surface: &mut Surface,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    borders: &[EdgeBorder; 4],
+) {
+    let [top, right, bottom, left] = borders;
+
+    // Draw each edge as a trapezoid
+    // Top edge
+    if top.visible && top.alpha > 0.0 {
+        draw_border_edge(
+            surface,
+            // Outer edge
+            [(x, y), (x + width, y)],
+            // Inner edge
+            [(x + left.width, y + top.width), (x + width - right.width, y + top.width)],
+            top.color,
+            top.alpha,
+        );
+    }
+
+    // Right edge
+    if right.visible && right.alpha > 0.0 {
+        draw_border_edge(
+            surface,
+            // Outer edge
+            [(x + width, y), (x + width, y + height)],
+            // Inner edge
+            [(x + width - right.width, y + top.width), (x + width - right.width, y + height - bottom.width)],
+            right.color,
+            right.alpha,
+        );
+    }
+
+    // Bottom edge
+    if bottom.visible && bottom.alpha > 0.0 {
+        draw_border_edge(
+            surface,
+            // Outer edge
+            [(x + width, y + height), (x, y + height)],
+            // Inner edge
+            [(x + width - right.width, y + height - bottom.width), (x + left.width, y + height - bottom.width)],
+            bottom.color,
+            bottom.alpha,
+        );
+    }
+
+    // Left edge
+    if left.visible && left.alpha > 0.0 {
+        draw_border_edge(
+            surface,
+            // Outer edge
+            [(x, y + height), (x, y)],
+            // Inner edge
+            [(x + left.width, y + height - bottom.width), (x + left.width, y + top.width)],
+            left.color,
+            left.alpha,
+        );
+    }
+}
+
+/// Draw a single border edge as a quadrilateral.
+#[cfg(feature = "pdf")]
+fn draw_border_edge(
+    surface: &mut Surface,
+    outer: [(f32, f32); 2],
+    inner: [(f32, f32); 2],
+    color: Rgb,
+    alpha: f32,
+) {
+    if alpha <= 0.0 {
+        return;
+    }
+
+    let mut builder = PathBuilder::new();
+
+    // Draw quadrilateral: outer[0] -> outer[1] -> inner[1] -> inner[0] -> close
+    builder.move_to(outer[0].0, outer[0].1);
+    builder.line_to(outer[1].0, outer[1].1);
+    builder.line_to(inner[1].0, inner[1].1);
+    builder.line_to(inner[0].0, inner[0].1);
+    builder.close();
+
+    if let Some(path) = builder.finish() {
+        let fill = Fill {
+            paint: rgb::Color::new(color.r, color.g, color.b).into(),
+            opacity: NormalizedF32::new(alpha).unwrap_or(NormalizedF32::ONE),
+            rule: FillRule::NonZero,
+        };
+
+        surface.set_fill(Some(fill));
+        surface.draw_path(&path);
+    }
+}
+
 /// Extract box-shadow data from Stylo computed styles.
 #[cfg(feature = "pdf")]
 fn extract_box_shadows(
@@ -818,19 +1018,28 @@ fn render_node(
     }
 
     // Extract style data needed for rendering
-    let (radii, current_color, shadows) = if let Some(style) = node.primary_styles() {
+    let border_widths = BorderWidths {
+        top: layout.border.top,
+        right: layout.border.right,
+        bottom: layout.border.bottom,
+        left: layout.border.left,
+    };
+
+    let (radii, current_color, shadows, borders) = if let Some(style) = node.primary_styles() {
         let radii = extract_border_radii(&*style, width, height);
         let current_color = style
             .get_inherited_text()
             .color
             .to_color_space(style::color::ColorSpace::Srgb);
         let shadows = extract_box_shadows(&*style, &current_color);
-        (radii, current_color, shadows)
+        let borders = extract_borders(&*style, border_widths, &current_color);
+        (radii, current_color, shadows, borders)
     } else {
         (
             BorderRadii::default(),
             AbsoluteColor::BLACK,
             Vec::new(),
+            [EdgeBorder::default(); 4],
         )
     };
     let has_radius = radii.has_any_radius();
@@ -891,6 +1100,9 @@ fn render_node(
     for shadow in shadows.iter().filter(|s| s.inset) {
         draw_inset_box_shadow(surface, x, y, width, height, shadow, &radii);
     }
+
+    // 5. Draw borders (after background and shadows, before content)
+    draw_borders(surface, x, y, width, height, &borders);
 
     // Check for inline text layout data
     if let Some(element_data) = node.element_data() {

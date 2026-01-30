@@ -490,3 +490,91 @@ fn test_pdf_box_shadow_with_border_radius() {
     assert!(result.is_ok(), "box-shadow with border-radius should render");
     assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
 }
+
+#[test]
+fn test_pdf_border_uniform() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 100px; height: 100px; background: white;
+                        border: 5px solid red;"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "uniform border should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_border_per_edge() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 100px; height: 100px; background: white;
+                        border-top: 2px solid red;
+                        border-right: 4px solid green;
+                        border-bottom: 6px solid blue;
+                        border-left: 8px solid yellow;"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "per-edge borders should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_border_with_border_radius() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 100px; height: 100px; background: white;
+                        border: 3px solid blue; border-radius: 16px;"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "border with border-radius should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_border_transparent() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 100px; height: 100px; background: white;
+                        border: 5px solid transparent;"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "transparent border should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_border_with_alpha() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 100px; height: 100px; background: white;
+                        border: 5px solid rgba(255, 0, 0, 0.5);"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "border with alpha should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
