@@ -487,7 +487,10 @@ fn test_pdf_box_shadow_with_border_radius() {
     let config = Config::new().format(OutputFormat::Pdf);
 
     let result = render(html, config);
-    assert!(result.is_ok(), "box-shadow with border-radius should render");
+    assert!(
+        result.is_ok(),
+        "box-shadow with border-radius should render"
+    );
     assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
 }
 

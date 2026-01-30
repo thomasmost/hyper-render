@@ -22,6 +22,8 @@ use blitz_html::HtmlDocument;
 #[cfg(feature = "pdf")]
 use krilla::color::rgb;
 #[cfg(feature = "pdf")]
+use krilla::geom::Transform;
+#[cfg(feature = "pdf")]
 use krilla::geom::{Path, PathBuilder, Point, Size};
 #[cfg(feature = "pdf")]
 use krilla::num::NormalizedF32;
@@ -29,6 +31,8 @@ use krilla::num::NormalizedF32;
 use krilla::page::PageSettings;
 #[cfg(feature = "pdf")]
 use krilla::paint::{Fill, FillRule};
+#[cfg(feature = "pdf")]
+use krilla::paint::{LinearGradient, SpreadMethod, Stop};
 #[cfg(feature = "pdf")]
 use krilla::surface::Surface;
 #[cfg(feature = "pdf")]
@@ -39,10 +43,6 @@ use krilla::Document;
 use parley::PositionedLayoutItem;
 #[cfg(feature = "pdf")]
 use std::collections::HashMap;
-#[cfg(feature = "pdf")]
-use krilla::geom::Transform;
-#[cfg(feature = "pdf")]
-use krilla::paint::{LinearGradient, SpreadMethod, Stop};
 #[cfg(feature = "pdf")]
 use style::color::AbsoluteColor;
 #[cfg(feature = "pdf")]
@@ -210,7 +210,7 @@ fn extract_border_radii(
 #[cfg(feature = "pdf")]
 fn build_rounded_rect_path(x: f32, y: f32, w: f32, h: f32, radii: &BorderRadii) -> Option<Path> {
     // Kappa constant for approximating quarter circles with cubic beziers
-    const KAPPA: f32 = 0.5522847498;
+    const KAPPA: f32 = 0.552_284_8;
 
     let mut builder = PathBuilder::new();
 
@@ -315,8 +315,8 @@ fn convert_linear_gradient(
             let center_x = rect_width / 2.0;
             let center_y = rect_height / 2.0;
             // Calculate offset to reach corners
-            let offset_len = rect_width / 2.0 * radians.sin().abs()
-                + rect_height / 2.0 * radians.cos().abs();
+            let offset_len =
+                rect_width / 2.0 * radians.sin().abs() + rect_height / 2.0 * radians.cos().abs();
             (
                 center_x - offset_len * radians.sin(),
                 center_y - offset_len * radians.cos(),
@@ -520,6 +520,7 @@ struct EdgeBorder {
     visible: bool,
 }
 
+#[cfg(feature = "pdf")]
 impl Default for EdgeBorder {
     fn default() -> Self {
         Self {
@@ -558,9 +559,8 @@ fn extract_borders(
     let bottom_width = border_widths.bottom;
     let left_width = border_widths.left;
 
-    let convert_style = |s: BorderStyle| -> bool {
-        !matches!(s, BorderStyle::None | BorderStyle::Hidden)
-    };
+    let convert_style =
+        |s: BorderStyle| -> bool { !matches!(s, BorderStyle::None | BorderStyle::Hidden) };
 
     let extract_edge =
         |color: &style::values::computed::Color, width: f32, style: BorderStyle| -> EdgeBorder {
@@ -584,11 +584,7 @@ fn extract_borders(
         };
 
     [
-        extract_edge(
-            &border.border_top_color,
-            top_width,
-            border.border_top_style,
-        ),
+        extract_edge(&border.border_top_color, top_width, border.border_top_style),
         extract_edge(
             &border.border_right_color,
             right_width,
@@ -627,7 +623,10 @@ fn draw_borders(
             // Outer edge
             [(x, y), (x + width, y)],
             // Inner edge
-            [(x + left.width, y + top.width), (x + width - right.width, y + top.width)],
+            [
+                (x + left.width, y + top.width),
+                (x + width - right.width, y + top.width),
+            ],
             top.color,
             top.alpha,
         );
@@ -640,7 +639,10 @@ fn draw_borders(
             // Outer edge
             [(x + width, y), (x + width, y + height)],
             // Inner edge
-            [(x + width - right.width, y + top.width), (x + width - right.width, y + height - bottom.width)],
+            [
+                (x + width - right.width, y + top.width),
+                (x + width - right.width, y + height - bottom.width),
+            ],
             right.color,
             right.alpha,
         );
@@ -653,7 +655,10 @@ fn draw_borders(
             // Outer edge
             [(x + width, y + height), (x, y + height)],
             // Inner edge
-            [(x + width - right.width, y + height - bottom.width), (x + left.width, y + height - bottom.width)],
+            [
+                (x + width - right.width, y + height - bottom.width),
+                (x + left.width, y + height - bottom.width),
+            ],
             bottom.color,
             bottom.alpha,
         );
@@ -666,7 +671,10 @@ fn draw_borders(
             // Outer edge
             [(x, y + height), (x, y)],
             // Inner edge
-            [(x + left.width, y + height - bottom.width), (x + left.width, y + top.width)],
+            [
+                (x + left.width, y + height - bottom.width),
+                (x + left.width, y + top.width),
+            ],
             left.color,
             left.alpha,
         );
@@ -778,7 +786,7 @@ fn draw_outset_box_shadow(
     } else {
         // Approximate blur with multiple layers
         // More layers = smoother but more expensive
-        let blur_steps = (shadow.blur / 3.0).ceil().max(2.0).min(8.0) as usize;
+        let blur_steps = (shadow.blur / 3.0).ceil().clamp(2.0, 8.0) as usize;
         let step_expand = shadow.blur * 2.5 / blur_steps as f32;
 
         for i in 0..blur_steps {
@@ -835,7 +843,7 @@ fn draw_inset_box_shadow(
     }
 
     let blur_steps = if shadow.blur > 0.0 {
-        (shadow.blur / 3.0).ceil().max(2.0).min(8.0) as usize
+        (shadow.blur / 3.0).ceil().clamp(2.0, 8.0) as usize
     } else {
         1
     };
@@ -911,6 +919,7 @@ fn draw_inset_box_shadow(
 
 /// Draw a rectangle with specified alpha (for shadows).
 #[cfg(feature = "pdf")]
+#[allow(clippy::too_many_arguments)]
 fn draw_rect_with_alpha(
     surface: &mut Surface,
     x: f32,
@@ -1028,13 +1037,13 @@ fn render_node(
     };
 
     let (radii, current_color, shadows, borders) = if let Some(style) = node.primary_styles() {
-        let radii = extract_border_radii(&*style, width, height);
+        let radii = extract_border_radii(&style, width, height);
         let current_color = style
             .get_inherited_text()
             .color
             .to_color_space(style::color::ColorSpace::Srgb);
-        let shadows = extract_box_shadows(&*style, &current_color);
-        let borders = extract_borders(&*style, border_widths, &current_color);
+        let shadows = extract_box_shadows(&style, &current_color);
+        let borders = extract_borders(&style, border_widths, &current_color);
         (radii, current_color, shadows, borders)
     } else {
         (
@@ -1073,26 +1082,24 @@ fn render_node(
         let bg = style.get_background();
         for bg_image in bg.background_image.0.iter() {
             if let style::values::generics::image::GenericImage::Gradient(gradient) = bg_image {
-                match gradient.as_ref() {
-                    GenericGradient::Linear {
+                // TODO: Support radial and conic gradients
+                if let GenericGradient::Linear {
+                    direction,
+                    items,
+                    flags,
+                    ..
+                } = gradient.as_ref()
+                {
+                    if let Some(linear_grad) = convert_linear_gradient(
                         direction,
                         items,
-                        flags,
-                        ..
-                    } => {
-                        if let Some(linear_grad) = convert_linear_gradient(
-                            direction,
-                            items,
-                            *flags,
-                            width,
-                            height,
-                            &current_color,
-                        ) {
-                            draw_gradient_rect(surface, x, y, width, height, linear_grad);
-                        }
+                        *flags,
+                        width,
+                        height,
+                        &current_color,
+                    ) {
+                        draw_gradient_rect(surface, x, y, width, height, linear_grad);
                     }
-                    // TODO: Support radial and conic gradients
-                    _ => {}
                 }
             }
         }
