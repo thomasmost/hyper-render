@@ -301,3 +301,105 @@ fn test_pdf_border_radius_with_text() {
     assert!(result.is_ok(), "border-radius with text should render");
     assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
 }
+
+#[test]
+fn test_pdf_linear_gradient_horizontal() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 200px; height: 100px;
+                        background: linear-gradient(to right, red, blue);"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "horizontal gradient should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_linear_gradient_vertical() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 200px; height: 100px;
+                        background: linear-gradient(to bottom, green, yellow);"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "vertical gradient should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_linear_gradient_angled() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 200px; height: 100px;
+                        background: linear-gradient(45deg, red, yellow, green);"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "angled gradient should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_linear_gradient_corner() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 200px; height: 100px;
+                        background: linear-gradient(to bottom right, purple, orange);"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "corner gradient should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_linear_gradient_with_stops() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 200px; height: 100px;
+                        background: linear-gradient(90deg, red 0%, yellow 25%, green 50%, blue 100%);"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "gradient with stops should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_gradient_with_border_radius() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 200px; height: 100px; border-radius: 20px;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "gradient with border-radius should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}

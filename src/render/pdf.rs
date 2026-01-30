@@ -37,7 +37,17 @@ use parley::PositionedLayoutItem;
 #[cfg(feature = "pdf")]
 use std::collections::HashMap;
 #[cfg(feature = "pdf")]
+use krilla::geom::Transform;
+#[cfg(feature = "pdf")]
+use krilla::paint::{LinearGradient, SpreadMethod, Stop};
+#[cfg(feature = "pdf")]
+use style::color::AbsoluteColor;
+#[cfg(feature = "pdf")]
 use style::values::computed::{BorderCornerRadius, CSSPixelLength};
+#[cfg(feature = "pdf")]
+use style::values::generics::image::{GenericGradient, GenericGradientItem, GradientFlags};
+#[cfg(feature = "pdf")]
+use style::values::specified::position::{HorizontalPositionKeyword, VerticalPositionKeyword};
 
 /// RGB color for PDF rendering.
 #[cfg(feature = "pdf")]
@@ -277,6 +287,214 @@ fn build_rounded_rect_path(x: f32, y: f32, w: f32, h: f32, radii: &BorderRadii) 
     builder.finish()
 }
 
+/// Convert a Stylo linear gradient to a Krilla LinearGradient.
+#[cfg(feature = "pdf")]
+fn convert_linear_gradient(
+    direction: &style::values::computed::LineDirection,
+    items: &[GenericGradientItem<
+        style::values::generics::color::GenericColor<style::values::computed::Percentage>,
+        style::values::computed::LengthPercentage,
+    >],
+    flags: GradientFlags,
+    rect_width: f32,
+    rect_height: f32,
+    current_color: &AbsoluteColor,
+) -> Option<LinearGradient> {
+    use style::values::computed::LineDirection;
+
+    // Calculate start and end points based on direction
+    // CSS gradients go from start to end in the direction specified
+    let (x1, y1, x2, y2) = match direction {
+        LineDirection::Angle(angle) => {
+            // CSS angle: 0deg = to top, 90deg = to right, etc.
+            // We need to convert to standard math angle (counter-clockwise from right)
+            let radians = -angle.radians() + std::f32::consts::PI;
+            let center_x = rect_width / 2.0;
+            let center_y = rect_height / 2.0;
+            // Calculate offset to reach corners
+            let offset_len = rect_width / 2.0 * radians.sin().abs()
+                + rect_height / 2.0 * radians.cos().abs();
+            (
+                center_x - offset_len * radians.sin(),
+                center_y - offset_len * radians.cos(),
+                center_x + offset_len * radians.sin(),
+                center_y + offset_len * radians.cos(),
+            )
+        }
+        LineDirection::Horizontal(horizontal) => {
+            let mid_y = rect_height / 2.0;
+            match horizontal {
+                HorizontalPositionKeyword::Right => (0.0, mid_y, rect_width, mid_y),
+                HorizontalPositionKeyword::Left => (rect_width, mid_y, 0.0, mid_y),
+            }
+        }
+        LineDirection::Vertical(vertical) => {
+            let mid_x = rect_width / 2.0;
+            match vertical {
+                VerticalPositionKeyword::Top => (mid_x, rect_height, mid_x, 0.0),
+                VerticalPositionKeyword::Bottom => (mid_x, 0.0, mid_x, rect_height),
+            }
+        }
+        LineDirection::Corner(horizontal, vertical) => {
+            let (start_x, end_x) = match horizontal {
+                HorizontalPositionKeyword::Right => (0.0, rect_width),
+                HorizontalPositionKeyword::Left => (rect_width, 0.0),
+            };
+            let (start_y, end_y) = match vertical {
+                VerticalPositionKeyword::Top => (rect_height, 0.0),
+                VerticalPositionKeyword::Bottom => (0.0, rect_height),
+            };
+            (start_x, start_y, end_x, end_y)
+        }
+    };
+
+    // Calculate gradient length for position resolution
+    let gradient_length = ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
+    let gradient_length_css = CSSPixelLength::new(gradient_length);
+
+    // Convert color stops
+    let stops = convert_gradient_stops(items, gradient_length_css, current_color);
+    if stops.is_empty() {
+        return None;
+    }
+
+    let repeating = flags.contains(GradientFlags::REPEATING);
+
+    Some(LinearGradient {
+        x1,
+        y1,
+        x2,
+        y2,
+        transform: Transform::identity(),
+        spread_method: if repeating {
+            SpreadMethod::Repeat
+        } else {
+            SpreadMethod::Pad
+        },
+        stops,
+        anti_alias: true,
+    })
+}
+
+/// Convert Stylo gradient color stops to Krilla stops.
+#[cfg(feature = "pdf")]
+fn convert_gradient_stops(
+    items: &[GenericGradientItem<
+        style::values::generics::color::GenericColor<style::values::computed::Percentage>,
+        style::values::computed::LengthPercentage,
+    >],
+    gradient_length: CSSPixelLength,
+    current_color: &AbsoluteColor,
+) -> Vec<Stop> {
+    use style::values::specified::percentage::ToPercentage;
+
+    let mut stops = Vec::new();
+    let num_items = items
+        .iter()
+        .filter(|item| !matches!(item, GenericGradientItem::InterpolationHint(_)))
+        .count();
+
+    let mut color_stop_idx = 0;
+    for item in items.iter() {
+        match item {
+            GenericGradientItem::SimpleColorStop(color) => {
+                // Simple stop: evenly distributed
+                let offset = if num_items > 1 {
+                    color_stop_idx as f32 / (num_items - 1) as f32
+                } else {
+                    0.0
+                };
+                color_stop_idx += 1;
+
+                if let Some(stop) = color_to_krilla_stop(color, offset, current_color) {
+                    stops.push(stop);
+                }
+            }
+            GenericGradientItem::ComplexColorStop { color, position } => {
+                // Complex stop: has explicit position
+                if let Some(percentage) = position.to_percentage_of(gradient_length) {
+                    let offset = percentage.to_percentage();
+                    color_stop_idx += 1;
+
+                    if let Some(stop) = color_to_krilla_stop(color, offset, current_color) {
+                        stops.push(stop);
+                    }
+                }
+            }
+            GenericGradientItem::InterpolationHint(_) => {
+                // Interpolation hints are not directly supported; skip for now
+            }
+        }
+    }
+
+    stops
+}
+
+/// Convert a Stylo color to a Krilla gradient stop.
+#[cfg(feature = "pdf")]
+fn color_to_krilla_stop(
+    color: &style::values::generics::color::GenericColor<style::values::computed::Percentage>,
+    offset: f32,
+    current_color: &AbsoluteColor,
+) -> Option<Stop> {
+    let abs_color = color.resolve_to_absolute(current_color);
+    let srgb = abs_color.to_color_space(style::color::ColorSpace::Srgb);
+
+    let r = (srgb.components.0.clamp(0.0, 1.0) * 255.0) as u8;
+    let g = (srgb.components.1.clamp(0.0, 1.0) * 255.0) as u8;
+    let b = (srgb.components.2.clamp(0.0, 1.0) * 255.0) as u8;
+    let alpha = srgb.alpha.clamp(0.0, 1.0);
+
+    Some(Stop {
+        offset: NormalizedF32::new(offset.clamp(0.0, 1.0))?,
+        color: rgb::Color::new(r, g, b).into(),
+        opacity: NormalizedF32::new(alpha).unwrap_or(NormalizedF32::ONE),
+    })
+}
+
+/// Draw a gradient-filled rectangle.
+#[cfg(feature = "pdf")]
+fn draw_gradient_rect(
+    surface: &mut Surface,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    gradient: LinearGradient,
+) {
+    if w <= 0.0 || h <= 0.0 {
+        return;
+    }
+
+    // Translate gradient coordinates to absolute position
+    let translated_gradient = LinearGradient {
+        x1: x + gradient.x1,
+        y1: y + gradient.y1,
+        x2: x + gradient.x2,
+        y2: y + gradient.y2,
+        ..gradient
+    };
+
+    // Create path for rectangle
+    let mut builder = PathBuilder::new();
+    builder.move_to(x, y);
+    builder.line_to(x + w, y);
+    builder.line_to(x + w, y + h);
+    builder.line_to(x, y + h);
+    builder.close();
+
+    if let Some(path) = builder.finish() {
+        let fill = Fill {
+            paint: translated_gradient.into(),
+            opacity: NormalizedF32::ONE,
+            rule: FillRule::NonZero,
+        };
+
+        surface.set_fill(Some(fill));
+        surface.draw_path(&path);
+    }
+}
+
 /// Recursively render a node and its children.
 #[cfg(feature = "pdf")]
 fn render_node(
@@ -319,17 +537,48 @@ fn render_node(
         }
     }
 
-    // Check if this node has a background color
+    // Draw backgrounds (color first, then gradients on top)
     if let Some(style) = node.primary_styles() {
-        // Get background color from computed style
-        let bg = style.clone_background_color();
+        // Get current color for resolving `currentColor` in gradients
+        let current_color = style
+            .get_inherited_text()
+            .color
+            .to_color_space(style::color::ColorSpace::Srgb);
 
-        // Extract RGBA color components
-        if let Some((r, g, b, a)) = extract_color(&bg) {
-            // Only draw if not fully transparent
+        // 1. Draw background color
+        let bg_color = style.clone_background_color();
+        if let Some((r, g, b, a)) = extract_color(&bg_color) {
             if a > 0.0 {
                 let color = Rgb::new((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8);
                 draw_rect(surface, x, y, width, height, color);
+            }
+        }
+
+        // 2. Draw background gradients (on top of color)
+        let bg = style.get_background();
+        for bg_image in bg.background_image.0.iter() {
+            if let style::values::generics::image::GenericImage::Gradient(gradient) = bg_image {
+                match gradient.as_ref() {
+                    GenericGradient::Linear {
+                        direction,
+                        items,
+                        flags,
+                        ..
+                    } => {
+                        if let Some(linear_grad) = convert_linear_gradient(
+                            direction,
+                            items,
+                            *flags,
+                            width,
+                            height,
+                            &current_color,
+                        ) {
+                            draw_gradient_rect(surface, x, y, width, height, linear_grad);
+                        }
+                    }
+                    // TODO: Support radial and conic gradients
+                    _ => {}
+                }
             }
         }
     }
