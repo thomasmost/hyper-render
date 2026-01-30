@@ -18,7 +18,7 @@ use blitz_html::HtmlDocument;
 #[cfg(feature = "pdf")]
 use krilla::color::rgb;
 #[cfg(feature = "pdf")]
-use krilla::geom::{PathBuilder, Point, Size, Transform};
+use krilla::geom::{PathBuilder, Point, Size};
 #[cfg(feature = "pdf")]
 use krilla::num::NormalizedF32;
 #[cfg(feature = "pdf")]
@@ -85,10 +85,8 @@ pub fn render_to_pdf(document: &HtmlDocument, config: &Config) -> Result<Vec<u8>
     // Get the drawing surface
     let mut surface = page.surface();
 
-    // PDF coordinate system has origin at bottom-left, but we want top-left
-    // Apply a transform to flip the Y axis
-    let transform = Transform::from_row(1.0, 0.0, 0.0, -1.0, 0.0, height);
-    surface.push_transform(&transform);
+    // Krilla uses a top-left origin coordinate system (like web graphics),
+    // so no transform is needed - coordinates map directly.
 
     // Draw page background
     let [r, g, b, _a] = config.background;
@@ -101,9 +99,6 @@ pub fn render_to_pdf(document: &HtmlDocument, config: &Config) -> Result<Vec<u8>
     let doc = document.as_ref();
     let root = doc.root_element();
     render_node(&mut surface, doc, root, 0.0, 0.0, &mut font_cache)?;
-
-    // Pop the transform
-    surface.pop();
 
     // Finish the surface and page
     surface.finish();
