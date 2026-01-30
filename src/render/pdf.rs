@@ -5,6 +5,7 @@
 //!
 //! Supports:
 //! - Background colors on all elements
+//! - Border-radius (rounded corners via clip paths)
 //! - Text rendering with font embedding
 //! - Nested layout positioning
 
@@ -18,7 +19,7 @@ use blitz_html::HtmlDocument;
 #[cfg(feature = "pdf")]
 use krilla::color::rgb;
 #[cfg(feature = "pdf")]
-use krilla::geom::{PathBuilder, Point, Size};
+use krilla::geom::{Path, PathBuilder, Point, Size};
 #[cfg(feature = "pdf")]
 use krilla::num::NormalizedF32;
 #[cfg(feature = "pdf")]
@@ -35,6 +36,8 @@ use krilla::Document;
 use parley::PositionedLayoutItem;
 #[cfg(feature = "pdf")]
 use std::collections::HashMap;
+#[cfg(feature = "pdf")]
+use style::values::computed::{BorderCornerRadius, CSSPixelLength};
 
 /// RGB color for PDF rendering.
 #[cfg(feature = "pdf")]
@@ -49,6 +52,28 @@ struct Rgb {
 impl Rgb {
     fn new(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b }
+    }
+}
+
+/// Border radii for each corner of a rounded rectangle.
+/// Each corner has separate horizontal (x) and vertical (y) radii.
+#[cfg(feature = "pdf")]
+#[derive(Clone, Copy, Default)]
+struct BorderRadii {
+    top_left: (f32, f32),
+    top_right: (f32, f32),
+    bottom_right: (f32, f32),
+    bottom_left: (f32, f32),
+}
+
+#[cfg(feature = "pdf")]
+impl BorderRadii {
+    /// Check if any corner has a non-zero radius.
+    fn has_any_radius(&self) -> bool {
+        self.top_left != (0.0, 0.0)
+            || self.top_right != (0.0, 0.0)
+            || self.bottom_right != (0.0, 0.0)
+            || self.bottom_left != (0.0, 0.0)
     }
 }
 
@@ -139,6 +164,119 @@ fn draw_rect(surface: &mut Surface, x: f32, y: f32, w: f32, h: f32, color: Rgb) 
     }
 }
 
+/// Extract border-radius values from Stylo computed styles.
+#[cfg(feature = "pdf")]
+fn extract_border_radii(
+    style: &style::properties::ComputedValues,
+    width: f32,
+    height: f32,
+) -> BorderRadii {
+    let border = style.get_border();
+
+    // Resolution references for percentage-based radii
+    let resolve_w = CSSPixelLength::new(width);
+    let resolve_h = CSSPixelLength::new(height);
+
+    let resolve = |radius: &BorderCornerRadius| -> (f32, f32) {
+        (
+            radius.0.width.0.resolve(resolve_w).px(),
+            radius.0.height.0.resolve(resolve_h).px(),
+        )
+    };
+
+    BorderRadii {
+        top_left: resolve(&border.border_top_left_radius),
+        top_right: resolve(&border.border_top_right_radius),
+        bottom_right: resolve(&border.border_bottom_right_radius),
+        bottom_left: resolve(&border.border_bottom_left_radius),
+    }
+}
+
+/// Build a rounded rectangle path using cubic bezier curves at corners.
+/// The constant KAPPA (0.5522847498) approximates a quarter circle with a cubic bezier.
+#[cfg(feature = "pdf")]
+fn build_rounded_rect_path(x: f32, y: f32, w: f32, h: f32, radii: &BorderRadii) -> Option<Path> {
+    // Kappa constant for approximating quarter circles with cubic beziers
+    const KAPPA: f32 = 0.5522847498;
+
+    let mut builder = PathBuilder::new();
+
+    // Clamp radii to half of dimensions to avoid overlapping
+    let clamp_x = |r: f32| r.min(w / 2.0).max(0.0);
+    let clamp_y = |r: f32| r.min(h / 2.0).max(0.0);
+
+    let tl = (clamp_x(radii.top_left.0), clamp_y(radii.top_left.1));
+    let tr = (clamp_x(radii.top_right.0), clamp_y(radii.top_right.1));
+    let br = (clamp_x(radii.bottom_right.0), clamp_y(radii.bottom_right.1));
+    let bl = (clamp_x(radii.bottom_left.0), clamp_y(radii.bottom_left.1));
+
+    // Start at top-left, after the corner arc
+    builder.move_to(x + tl.0, y);
+
+    // Top edge
+    builder.line_to(x + w - tr.0, y);
+
+    // Top-right corner (cubic bezier)
+    if tr.0 > 0.0 && tr.1 > 0.0 {
+        builder.cubic_to(
+            x + w - tr.0 * (1.0 - KAPPA),
+            y,
+            x + w,
+            y + tr.1 * (1.0 - KAPPA),
+            x + w,
+            y + tr.1,
+        );
+    }
+
+    // Right edge
+    builder.line_to(x + w, y + h - br.1);
+
+    // Bottom-right corner
+    if br.0 > 0.0 && br.1 > 0.0 {
+        builder.cubic_to(
+            x + w,
+            y + h - br.1 * (1.0 - KAPPA),
+            x + w - br.0 * (1.0 - KAPPA),
+            y + h,
+            x + w - br.0,
+            y + h,
+        );
+    }
+
+    // Bottom edge
+    builder.line_to(x + bl.0, y + h);
+
+    // Bottom-left corner
+    if bl.0 > 0.0 && bl.1 > 0.0 {
+        builder.cubic_to(
+            x + bl.0 * (1.0 - KAPPA),
+            y + h,
+            x,
+            y + h - bl.1 * (1.0 - KAPPA),
+            x,
+            y + h - bl.1,
+        );
+    }
+
+    // Left edge
+    builder.line_to(x, y + tl.1);
+
+    // Top-left corner
+    if tl.0 > 0.0 && tl.1 > 0.0 {
+        builder.cubic_to(
+            x,
+            y + tl.1 * (1.0 - KAPPA),
+            x + tl.0 * (1.0 - KAPPA),
+            y,
+            x + tl.0,
+            y,
+        );
+    }
+
+    builder.close();
+    builder.finish()
+}
+
 /// Recursively render a node and its children.
 #[cfg(feature = "pdf")]
 fn render_node(
@@ -165,6 +303,20 @@ fn render_node(
             }
         }
         return Ok(());
+    }
+
+    // Extract border radii and check if we need clipping
+    let radii = node
+        .primary_styles()
+        .map(|style| extract_border_radii(&*style, width, height))
+        .unwrap_or_default();
+    let has_radius = radii.has_any_radius();
+
+    // Apply clip path for rounded corners
+    if has_radius {
+        if let Some(clip_path) = build_rounded_rect_path(x, y, width, height, &radii) {
+            surface.push_clip_path(&clip_path, &FillRule::NonZero);
+        }
     }
 
     // Check if this node has a background color
@@ -194,6 +346,11 @@ fn render_node(
         if let Some(child) = doc.get_node(*child_id) {
             render_node(surface, doc, child, x, y, font_cache)?;
         }
+    }
+
+    // Pop clip path if we applied one
+    if has_radius {
+        surface.pop();
     }
 
     Ok(())

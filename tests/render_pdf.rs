@@ -233,3 +233,71 @@ fn test_pdf_minimum_dimensions() {
     assert!(result.is_ok(), "minimum dimensions should work");
     assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
 }
+
+#[test]
+fn test_pdf_border_radius_uniform() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 100px; height: 100px; background: red; border-radius: 10px;"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "border-radius should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_border_radius_non_uniform() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 100px; height: 100px; background: blue;
+                        border-radius: 20px 10px 30px 5px;"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "non-uniform border-radius should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_border_radius_percentage() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 100px; height: 100px; background: green; border-radius: 50%;"></div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "percentage border-radius should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
+
+#[test]
+fn test_pdf_border_radius_with_text() {
+    let html = r#"
+        <html>
+        <body>
+            <div style="width: 200px; padding: 20px; background: #333;
+                        color: white; border-radius: 16px;">
+                Text inside rounded box
+            </div>
+        </body>
+        </html>
+    "#;
+    let config = Config::new().format(OutputFormat::Pdf);
+
+    let result = render(html, config);
+    assert!(result.is_ok(), "border-radius with text should render");
+    assert!(is_valid_pdf(&result.unwrap()), "output should be valid PDF");
+}
